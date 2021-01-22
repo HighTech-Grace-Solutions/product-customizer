@@ -15,6 +15,13 @@ type ParsedAssemblyOptions = Record<string, AssemblyOptionGroupState>
 
 const findItemMetadata = (id: string) => find<MetadataItem>(propEq('id', id))
 
+const generateId = ({ itemId, parentId }: { itemId: string, parentId?: string }) => `${parentId}$$$${itemId}`
+const destructId = (id: string) => {
+  const idList = id.split('$$$')
+
+  return idList[idList.length - 1]
+}
+
 function useAssemblyOptions(): ParsedAssemblyOptions | null {
   const { product, selectedItem } = useProduct()
   return useMemo(() => {
@@ -81,34 +88,31 @@ function parseAssemblyOptions(
           ? [...treePath, { itemId: parentItemId, groupId: assemblyOption.id }]
           : []
 
+
+      const itemId = generateId({ itemId: assemblyOption.id, parentId: parentItemId })
+      assemblyOptionsParsed[itemId] = {
+        id: itemId,
+        minQuantity: undefined,
+        maxQuantity: undefined,
+        groupName: splitGroupName(assemblyOption.id),
+        treePath: currentTreePath,
+        type: getGroupType(assemblyOption),
+        inputValues: assemblyOption.inputValues,
+        required: assemblyOption.required,
+        items: undefined,
+      } as AssemblyOptionGroupInputValue
+
       if (assemblyOption.composition) {
         const items = assemblyOption.composition.items
-          ? assemblyItems(priceMap, product, currentTreePath, assemblyOption)
+          ? assemblyItems(priceMap, product, currentTreePath, { ...assemblyOption, id: itemId })
           : undefined
 
-        assemblyOptionsParsed[assemblyOption.id] = {
-          id: assemblyOption.id,
+        assemblyOptionsParsed[itemId] = {
+          ...assemblyOptionsParsed[itemId],
           minQuantity: assemblyOption.composition.minQuantity,
           maxQuantity: assemblyOption.composition.maxQuantity,
-          groupName: splitGroupName(assemblyOption.id),
-          treePath: currentTreePath,
-          type: getGroupType(assemblyOption),
-          inputValues: assemblyOption.inputValues,
-          required: assemblyOption.required,
           items,
         } as AssemblyOptionGroup
-      } else {
-        assemblyOptionsParsed[assemblyOption.id] = {
-          id: assemblyOption.id,
-          minQuantity: undefined,
-          maxQuantity: undefined,
-          groupName: splitGroupName(assemblyOption.id),
-          treePath: currentTreePath,
-          type: getGroupType(assemblyOption),
-          inputValues: assemblyOption.inputValues,
-          required: assemblyOption.required,
-          items: undefined,
-        } as AssemblyOptionGroupInputValue
       }
 
       return assemblyOptionsParsed
@@ -140,6 +144,8 @@ function assemblyItems(
         return items
       }
 
+      const itemId = generateId({ itemId: assemblyItem.id, parentId: assemblyOption.id })
+      const assemblyOptionId = destructId(assemblyOption.id)
       // Recursively parse children of this assembly option
       const children =
         optionMetadata.assemblyOptions.length > 0
@@ -148,18 +154,18 @@ function assemblyItems(
               optionMetadata!.assemblyOptions,
               priceMap,
               product,
-              assemblyItem.id,
+              itemId,
               currentTreePath
             )
           : null
 
-      items[assemblyItem.id] = {
+      items[itemId] = {
         image: optionMetadata.imageUrl,
         name: optionMetadata.name,
-        id: assemblyItem.id,
+        id: itemId,
         price: pathOr(
           0,
-          [assemblyItem.priceTable, assemblyOption.id, assemblyItem.id],
+          [assemblyItem.priceTable, assemblyOptionId, assemblyItem.id],
           priceMap
         ),
         minQuantity: assemblyItem.minQuantity,
